@@ -1,0 +1,27 @@
+{
+  "servers": [
+    {
+      "name": "market-data",
+      "transport": {
+        "type": "stdio",
+        "command": "python",
+        "args": ["mcp_servers/market_data_server.py"]
+      },
+      "port": 8001
+    },
+    {
+      "name": "portfolio-management",
+      "transport": {
+        "type": "stdio",
+        "command": "python", 
+        "args": ["mcp_servers/portfolio_server.py"]
+      },
+      "port": 8002
+    }
+  ],
+  "dashboard": {
+    "port": 7860,
+    "host": "0.0.0.0",
+    "share": true
+  }
+}
