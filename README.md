@@ -13,6 +13,9 @@ A cutting-edge financial portfolio analyzer using MCP (Model Context Protocol) a
 
 ## Quick Start
 
+In Progress...
+
+<!--
 1. Install dependencies:
    ```bash
    pip install -r requirements.txt
@@ -33,6 +36,7 @@ A cutting-edge financial portfolio analyzer using MCP (Model Context Protocol) a
    ```
    http://localhost:7860
    ```
+   -->
 
 ## Architecture
 
