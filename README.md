@@ -53,3 +53,21 @@ Built using MCP (Model Context Protocol) with multiple specialized servers:
 
 Each MCP server is a standalone service that provides specific tools.
 AI agents coordinate between servers to provide comprehensive analysis.
+
+## RAG Architecture
+
+- We are using PostgreSQL with pgvector.
+- OpenAI Embeddings (API)
+   - Model: text-embedding-3-small
+   - Cost: ~$0.02 per 1M tokens
+
+### Implementation Phases
+
+- Phase 1: Foundation
+   - Set up PostgreSQL with pgvector
+   - Implement basic document ingestion pipeline
+   - Deploy sentence transformers for embeddings
+
+- Phase 2: Content Integration
+   - Process 5-10 key trading/finance books
+   - Integrate RAG into your financial agent
