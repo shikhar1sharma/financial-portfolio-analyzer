@@ -3,129 +3,129 @@ name: Financial AI System CI/CD
 
 on:
   push:
-    branches:
+    branches: 
       - main
-      - "feature/*"
-      - "hotfix/*"
+      - 'feature/*'
+      - 'hotfix/*'
       - develop
   pull_request:
-    branches:
+    branches: 
       - main
       - develop
 
 env:
-  PYTHON_VERSION: "3.10"
-  NODE_VERSION: "18"
+  PYTHON_VERSION: '3.10'
+  NODE_VERSION: '18'
 
 jobs:
   # Job 1: Validate code quality and structure
   validate:
     name: Code Validation
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Cache pip dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install flake8 black isort safety bandit
-          pip install -r requirements.txt
-
-      - name: Code formatting check (Black)
-        run: |
-          black --check --diff .
-
-      - name: Import sorting check (isort)
-        run: |
-          isort --check-only --diff .
-
-      - name: Lint with flake8
-        run: |
-          # Stop build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Treat all other issues as warnings
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-      - name: Security scan (Bandit)
-        run: |
-          bandit -r . -x tests/ -f json -o bandit-report.json || true
-          bandit -r . -x tests/ || true
-
-      - name: Dependency security check
-        run: |
-          safety check --json --output safety-report.json || true
-          safety check || true
-
-      - name: Upload security reports
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: security-reports
-          path: |
-            bandit-report.json
-            safety-report.json
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort safety bandit
+        pip install -r requirements.txt
+        
+    - name: Code formatting check (Black)
+      run: |
+        black --check --diff .
+        
+    - name: Import sorting check (isort)
+      run: |
+        isort --check-only --diff .
+        
+    - name: Lint with flake8
+      run: |
+        # Stop build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Treat all other issues as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: Security scan (Bandit)
+      run: |
+        bandit -r . -x tests/ -f json -o bandit-report.json || true
+        bandit -r . -x tests/ || true
+        
+    - name: Dependency security check
+      run: |
+        safety check --json --output safety-report.json || true
+        safety check || true
+        
+    - name: Upload security reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
 
   # Job 2: Build and validate servers
   build-servers:
     name: Build MCP Servers
     runs-on: ubuntu-latest
     needs: validate
-
+    
     strategy:
       matrix:
         server: [market_data_server, portfolio_server]
-
+        
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Create data directory
-        run: |
-          mkdir -p data logs
-
-      - name: Validate server syntax
-        run: |
-          python -m py_compile mcp_servers/${{ matrix.server }}.py
-
-      - name: Check server imports
-        run: |
-          cd mcp_servers
-          python -c "import ${{ matrix.server }}"
-
-      - name: Validate server configuration
-        run: |
-          python -c "
-          import json
-          with open('config/mcp_config.json', 'r') as f:
-              config = json.load(f)
-          print('✅ MCP configuration is valid JSON')
-          print(f'📊 Found {len(config[\"servers\"])} server configurations')
-          "
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create data directory
+      run: |
+        mkdir -p data logs
+        
+    - name: Validate server syntax
+      run: |
+        python -m py_compile mcp_servers/${{ matrix.server }}.py
+        
+    - name: Check server imports
+      run: |
+        cd mcp_servers
+        python -c "import ${{ matrix.server }}"
+        
+    - name: Validate server configuration
+      run: |
+        python -c "
+        import json
+        with open('config/mcp_config.json', 'r') as f:
+            config = json.load(f)
+        print('✅ MCP configuration is valid JSON')
+        print(f'📊 Found {len(config[\"servers\"])} server configurations')
+        "
 
   # Job 3: Feature branch deployment simulation
   deploy-feature:
@@ -133,59 +133,59 @@ jobs:
     runs-on: ubuntu-latest
     needs: [validate, build-servers]
     if: startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/hotfix/')
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Create deployment environment
-        run: |
-          mkdir -p data logs temp
-          cp .env.example .env
-
-      - name: Simulate server startup
-        run: |
-          echo "🚀 Simulating Market Data Server startup..."
-          timeout 30s python mcp_servers/market_data_server.py &
-          MARKET_PID=$!
-          sleep 5
-
-          echo "🚀 Simulating Portfolio Server startup..."
-          timeout 30s python mcp_servers/portfolio_server.py &
-          PORTFOLIO_PID=$!
-          sleep 5
-
-          echo "✅ Servers started successfully"
-
-          # Clean shutdown
-          kill $MARKET_PID $PORTFOLIO_PID 2>/dev/null || true
-
-      - name: Validate project structure
-        run: |
-          python run_project.py
-
-      - name: Feature deployment summary
-        run: |
-          echo "## 🎯 Feature Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status**: ✅ Ready for review" >> $GITHUB_STEP_SUMMARY
-          echo "- **Servers**: Market Data ✅, Portfolio Management ✅" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
-          echo "1. Create Pull Request to \`main\` branch" >> $GITHUB_STEP_SUMMARY
-          echo "2. Request code review" >> $GITHUB_STEP_SUMMARY
-          echo "3. After approval, merge will trigger production deployment" >> $GITHUB_STEP_SUMMARY
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create deployment environment
+      run: |
+        mkdir -p data logs temp
+        cp .env.example .env
+        
+    - name: Simulate server startup
+      run: |
+        echo "🚀 Simulating Market Data Server startup..."
+        timeout 30s python mcp_servers/market_data_server.py &
+        MARKET_PID=$!
+        sleep 5
+        
+        echo "🚀 Simulating Portfolio Server startup..."
+        timeout 30s python mcp_servers/portfolio_server.py &
+        PORTFOLIO_PID=$!
+        sleep 5
+        
+        echo "✅ Servers started successfully"
+        
+        # Clean shutdown
+        kill $MARKET_PID $PORTFOLIO_PID 2>/dev/null || true
+        
+    - name: Validate project structure
+      run: |
+        python run_project.py
+        
+    - name: Feature deployment summary
+      run: |
+        echo "## 🎯 Feature Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status**: ✅ Ready for review" >> $GITHUB_STEP_SUMMARY
+        echo "- **Servers**: Market Data ✅, Portfolio Management ✅" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "1. Create Pull Request to \`main\` branch" >> $GITHUB_STEP_SUMMARY
+        echo "2. Request code review" >> $GITHUB_STEP_SUMMARY
+        echo "3. After approval, merge will trigger production deployment" >> $GITHUB_STEP_SUMMARY
 
   # Job 4: Production deployment (main branch)
   deploy-production:
@@ -194,98 +194,98 @@ jobs:
     needs: [validate, build-servers]
     if: github.ref == 'refs/heads/main'
     environment: production
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Create production environment
-        run: |
-          mkdir -p data logs
-          # In real deployment, you'd use secrets for API keys
-          cp .env.example .env
-
-      - name: Pre-deployment health check
-        run: |
-          echo "🔍 Running pre-deployment health checks..."
-          python run_project.py
-
-      - name: Deploy MCP Servers
-        run: |
-          echo "🚀 Deploying Financial AI System to Production..."
-
-          # Start Market Data Server
-          echo "📊 Starting Market Data Server..."
-          nohup python mcp_servers/market_data_server.py > logs/market_data.log 2>&1 &
-          MARKET_PID=$!
-          echo $MARKET_PID > market_data.pid
-
-          # Start Portfolio Server
-          echo "💼 Starting Portfolio Management Server..."
-          nohup python mcp_servers/portfolio_server.py > logs/portfolio.log 2>&1 &
-          PORTFOLIO_PID=$!
-          echo $PORTFOLIO_PID > portfolio.pid
-
-          # Wait for servers to start
-          sleep 10
-
-          echo "✅ Production deployment completed"
-          echo "📊 Market Data Server PID: $MARKET_PID"
-          echo "💼 Portfolio Server PID: $PORTFOLIO_PID"
-
-      - name: Post-deployment verification
-        run: |
-          echo "🔍 Verifying deployment..."
-
-          # Check if process files exist
-          if [ -f "market_data.pid" ] && [ -f "portfolio.pid" ]; then
-            echo "✅ Server PID files created"
-          else
-            echo "❌ Server startup verification failed"
-            exit 1
-          fi
-
-          # Basic connectivity test (simulate)
-          echo "🌐 Testing server connectivity..."
-          sleep 5
-          echo "✅ Servers responding correctly"
-
-      - name: Production deployment summary
-        run: |
-          echo "## 🚀 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deployed**: $(date)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🎯 Services Status" >> $GITHUB_STEP_SUMMARY
-          echo "- **Market Data Server**: ✅ Running on port 8001" >> $GITHUB_STEP_SUMMARY
-          echo "- **Portfolio Server**: ✅ Running on port 8002" >> $GITHUB_STEP_SUMMARY
-          echo "- **Dashboard**: 🔄 Ready to start on port 7860" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📋 Post-Deployment Tasks" >> $GITHUB_STEP_SUMMARY
-          echo "- [ ] Monitor server logs for errors" >> $GITHUB_STEP_SUMMARY
-          echo "- [ ] Verify API endpoints respond correctly" >> $GITHUB_STEP_SUMMARY
-          echo "- [ ] Start dashboard service if needed" >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload deployment logs
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: production-logs
-          path: |
-            logs/
-            *.pid
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create production environment
+      run: |
+        mkdir -p data logs
+        # In real deployment, you'd use secrets for API keys
+        cp .env.example .env
+        
+    - name: Pre-deployment health check
+      run: |
+        echo "🔍 Running pre-deployment health checks..."
+        python run_project.py
+        
+    - name: Deploy MCP Servers
+      run: |
+        echo "🚀 Deploying Financial AI System to Production..."
+        
+        # Start Market Data Server
+        echo "📊 Starting Market Data Server..."
+        nohup python mcp_servers/market_data_server.py > logs/market_data.log 2>&1 &
+        MARKET_PID=$!
+        echo $MARKET_PID > market_data.pid
+        
+        # Start Portfolio Server
+        echo "💼 Starting Portfolio Management Server..."
+        nohup python mcp_servers/portfolio_server.py > logs/portfolio.log 2>&1 &
+        PORTFOLIO_PID=$!
+        echo $PORTFOLIO_PID > portfolio.pid
+        
+        # Wait for servers to start
+        sleep 10
+        
+        echo "✅ Production deployment completed"
+        echo "📊 Market Data Server PID: $MARKET_PID"
+        echo "💼 Portfolio Server PID: $PORTFOLIO_PID"
+        
+    - name: Post-deployment verification
+      run: |
+        echo "🔍 Verifying deployment..."
+        
+        # Check if process files exist
+        if [ -f "market_data.pid" ] && [ -f "portfolio.pid" ]; then
+          echo "✅ Server PID files created"
+        else
+          echo "❌ Server startup verification failed"
+          exit 1
+        fi
+        
+        # Basic connectivity test (simulate)
+        echo "🌐 Testing server connectivity..."
+        sleep 5
+        echo "✅ Servers responding correctly"
+        
+    - name: Production deployment summary
+      run: |
+        echo "## 🚀 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Deployed**: $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🎯 Services Status" >> $GITHUB_STEP_SUMMARY
+        echo "- **Market Data Server**: ✅ Running on port 8001" >> $GITHUB_STEP_SUMMARY
+        echo "- **Portfolio Server**: ✅ Running on port 8002" >> $GITHUB_STEP_SUMMARY
+        echo "- **Dashboard**: 🔄 Ready to start on port 7860" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📋 Post-Deployment Tasks" >> $GITHUB_STEP_SUMMARY
+        echo "- [ ] Monitor server logs for errors" >> $GITHUB_STEP_SUMMARY
+        echo "- [ ] Verify API endpoints respond correctly" >> $GITHUB_STEP_SUMMARY
+        echo "- [ ] Start dashboard service if needed" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Upload deployment logs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: production-logs
+        path: |
+          logs/
+          *.pid
 
   # Job 5: Cleanup and notifications
   notify:
@@ -293,22 +293,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: [deploy-feature, deploy-production]
     if: always()
-
+    
     steps:
-      - name: Feature deployment notification
-        if: needs.deploy-feature.result == 'success'
-        run: |
-          echo "✅ Feature branch deployment simulation successful"
-          echo "Ready for Pull Request to main branch"
-
-      - name: Production deployment notification
-        if: needs.deploy-production.result == 'success'
-        run: |
-          echo "🚀 Production deployment completed successfully"
-          echo "Financial AI System is now live"
-
-      - name: Failure notification
-        if: needs.deploy-feature.result == 'failure' || needs.deploy-production.result == 'failure'
-        run: |
-          echo "❌ Deployment failed - check logs for details"
-          echo "Please review errors and fix before retry"
+    - name: Feature deployment notification
+      if: needs.deploy-feature.result == 'success'
+      run: |
+        echo "✅ Feature branch deployment simulation successful"
+        echo "Ready for Pull Request to main branch"
+        
+    - name: Production deployment notification
+      if: needs.deploy-production.result == 'success'
+      run: |
+        echo "🚀 Production deployment completed successfully"
+        echo "Financial AI System is now live"
+        
+    - name: Failure notification
+      if: needs.deploy-feature.result == 'failure' || needs.deploy-production.result == 'failure'
+      run: |
+        echo "❌ Deployment failed - check logs for details"
+        echo "Please review errors and fix before retry"
