@@ -30,7 +30,6 @@ class MarketDataProvider:
     def get_stock_data(self, symbol: str, period: str = "1d") -> Dict[str, Any]:
         """
         Get stock data for a symbol
-        stock data fetching using yfinance
         """
         try:
             ticker = yf.Ticker(symbol)
@@ -208,7 +207,7 @@ class MarketDataProvider:
         lower_band = rolling_mean - (rolling_std * num_std_dev)
         return upper_band.iloc[-1], rolling_mean.iloc[-1], lower_band.iloc[-1]
     
-    def _generate_trading_signals(self, current_price: float, ma_20: float, ma_50: float, rsi: float, macd_line: float, macd_signal: float) -> Dict[str, str]:
+    def _generate_trading_signals(self, current_price: float, ma_20: float, ma_50: float, rsi: float, macd_line: float, macd_signal: float) -> List[str]:
         """Generate trading signals based on technical indicators"""
         signals = []
         
@@ -266,7 +265,7 @@ def get_portfolio_performance(symbols: List[str], weights: List[float]) -> Dict[
             
             if 'error' not in stock_data and stock_data['current_price']:
                 weighted_value = stock_data['current_price'] * weight
-                weighted_change = stock_data['price_change_percent'] * weight
+                weighted_change = stock_data['percent_change_pct'] * weight
                 
                 portfolio_data.append({
                     'symbol': symbol,
@@ -305,4 +304,5 @@ def get_technical_analysis(symbol: str) -> Dict[str, Any]:
     return market_provider.calculate_technical_indicators(symbol)
 
 if __name__ == "__main__":
-    app.run(port=8001)
+    # Remove the port parameter - FastMCP uses stdio by default
+    app.run()

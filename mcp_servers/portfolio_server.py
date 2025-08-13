@@ -34,6 +34,7 @@ class PortfolioManager:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
+            
             # Create positions table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS positions (
@@ -49,7 +50,7 @@ class PortfolioManager:
                 )
             ''')
 
-            # Create transactions table# Create transactions table for detailed history
+            # Create transactions table for detailed history
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +77,6 @@ class PortfolioManager:
             ''')    
 
             # Insert default metadata if not exists
-
             cursor.execute('SELECT COUNT(*) FROM portfolio_metadata')
             if cursor.fetchone()[0] == 0:
                 cursor.execute('''
@@ -86,7 +86,7 @@ class PortfolioManager:
 
             conn.commit()
             conn.close()
-            self.logger
+            self.logger.info("Database initialized successfully")
         except Exception as e:
             self.logger.error(f"Error initializing database: {e}")
             raise
@@ -112,13 +112,13 @@ class PortfolioManager:
             cursor = conn.cursor()
 
             # Check if position already exists
-            cursor.execute('SELECT id FROM positions WHERE symbol = ?', (symbol,))
+            cursor.execute('SELECT id, quantity, purchase_price FROM positions WHERE symbol = ?', (symbol.upper(),))
             existing_position = cursor.fetchone()
 
             if existing_position:
-                # update existing position (average cost)
-                old_quantity = existing_position[2]
-                old_price = existing_position[3]
+                # Update existing position (average cost)
+                old_quantity = existing_position[1]
+                old_price = existing_position[2]
                 new_quantity = old_quantity + quantity
                 new_avg_price = ((old_quantity * old_price) + (quantity * purchase_price)) / new_quantity
                 
@@ -149,6 +149,7 @@ class PortfolioManager:
             ''', (symbol.upper(), 'BUY', quantity, purchase_price, purchase_date))
             
             conn.commit()
+            conn.close()
 
             return {
                 'status': 'success',
@@ -169,8 +170,6 @@ class PortfolioManager:
                 'symbol': symbol.upper(),
                 'timestamp': datetime.now().isoformat()
             }
-        finally:
-            conn.close()
 
     def get_portfolio_summary(self) -> Dict[str, Any]:
         """
@@ -529,6 +528,78 @@ class PortfolioManager:
                 'timestamp': datetime.now().isoformat()
             }
 
+    def sell_position(self, symbol: str, quantity: float, sale_price: float, 
+                     sale_date: str = None) -> Dict[str, Any]:
+        """Sell shares from an existing position"""
+        try:
+            if sale_date is None:
+                sale_date = datetime.now().isoformat()
+            
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Check if position exists and has enough shares
+            cursor.execute('SELECT * FROM positions WHERE symbol = ?', (symbol.upper(),))
+            position = cursor.fetchone()
+            
+            if not position:
+                return {
+                    'status': 'error',
+                    'error': f'No position found for {symbol.upper()}',
+                    'timestamp': datetime.now().isoformat()
+                }
+            
+            current_quantity = position[2]
+            
+            if quantity > current_quantity:
+                return {
+                    'status': 'error',
+                    'error': f'Insufficient shares. Current position: {current_quantity}, requested: {quantity}',
+                    'timestamp': datetime.now().isoformat()
+                }
+            
+            # Calculate realized P&L
+            purchase_price = position[3]
+            realized_pnl = (sale_price - purchase_price) * quantity
+            
+            # Update position
+            new_quantity = current_quantity - quantity
+            
+            if new_quantity == 0:
+                # Remove position entirely
+                cursor.execute('DELETE FROM positions WHERE symbol = ?', (symbol.upper(),))
+            else:
+                # Update quantity
+                cursor.execute('UPDATE positions SET quantity = ? WHERE symbol = ?', 
+                             (new_quantity, symbol.upper()))
+            
+            # Add transaction record
+            cursor.execute('''
+                INSERT INTO transactions (symbol, transaction_type, quantity, price, transaction_date)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (symbol.upper(), 'SELL', quantity, sale_price, sale_date))
+            
+            conn.commit()
+            conn.close()
+            
+            return {
+                'status': 'success',
+                'action': 'sold',
+                'symbol': symbol.upper(),
+                'quantity_sold': quantity,
+                'sale_price': sale_price,
+                'realized_pnl': float(realized_pnl),
+                'remaining_quantity': float(new_quantity),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {
+                'status': 'error',
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }
+
 portfolio_manager = PortfolioManager()
 
 @app.tool()
@@ -560,84 +631,9 @@ def get_portfolio_metrics() -> Dict[str, Any]:
 @app.tool()
 def sell_position(symbol: str, quantity: float, sale_price: float, 
                  sale_date: str = None) -> Dict[str, Any]:
-    """Sell shares from an existing position
-    
-    Args:
-        symbol: Stock ticker symbol
-        quantity: Number of shares to sell
-        sale_price: Sale price per share
-        sale_date: Date of sale (ISO format, optional - defaults to now)
-    """
+    """Sell shares from an existing position"""
+    return portfolio_manager.sell_position(symbol, quantity, sale_price, sale_date)
 
-    try:
-        if sale_date is None:
-            sale_date = datetime.now().isoformat()
-        
-        conn = sqlite3.connect(portfolio_manager.db_path)
-        cursor = conn.cursor()
-        
-        # Check if position exists and has enough shares
-        cursor.execute('SELECT * FROM positions WHERE symbol = ?', (symbol.upper(),))
-        position = cursor.fetchone()
-        
-        if not position:
-            return {
-                'status': 'error',
-                'error': f'No position found for {symbol.upper()}',
-                'timestamp': datetime.now().isoformat()
-            }
-        
-        current_quantity = position[2]
-        
-        if quantity > current_quantity:
-            return {
-                'status': 'error',
-                'error': f'Insufficient shares. Current position: {current_quantity}, requested: {quantity}',
-                'timestamp': datetime.now().isoformat()
-            }
-        
-        # Calculate realized P&L
-        purchase_price = position[3]
-        realized_pnl = (sale_price - purchase_price) * quantity
-        
-        # Update position
-        new_quantity = current_quantity - quantity
-        
-        if new_quantity == 0:
-            # Remove position entirely
-            cursor.execute('DELETE FROM positions WHERE symbol = ?', (symbol.upper(),))
-        else:
-            # Update quantity
-            cursor.execute('UPDATE positions SET quantity = ? WHERE symbol = ?', 
-                         (new_quantity, symbol.upper()))
-        
-        # Add transaction record
-        cursor.execute('''
-            INSERT INTO transactions (symbol, transaction_type, quantity, price, transaction_date)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (symbol.upper(), 'SELL', quantity, sale_price, sale_date))
-        
-        conn.commit()
-        conn.close()
-        
-        return {
-            'status': 'success',
-            'action': 'sold',
-            'symbol': symbol.upper(),
-            'quantity_sold': quantity,
-            'sale_price': sale_price,
-            'realized_pnl': float(realized_pnl),
-            'remaining_quantity': float(new_quantity),
-            'timestamp': datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        return {
-            'status': 'error',
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }
-
-        
 if __name__ == "__main__":
-    app.run(port=8002)
+    # Remove the port parameter - FastMCP uses stdio by default
+    app.run()
