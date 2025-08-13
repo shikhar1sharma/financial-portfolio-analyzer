@@ -635,5 +635,4 @@ def sell_position(symbol: str, quantity: float, sale_price: float,
     return portfolio_manager.sell_position(symbol, quantity, sale_price, sale_date)
 
 if __name__ == "__main__":
-    # Remove the port parameter - FastMCP uses stdio by default
-    app.run()
+    app.run(host="0.0.0.0", port=8002)

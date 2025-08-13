@@ -305,4 +305,4 @@ def get_technical_analysis(symbol: str) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     # Remove the port parameter - FastMCP uses stdio by default
-    app.run()
+    app.run(host="0.0.0.0", port=8001)
