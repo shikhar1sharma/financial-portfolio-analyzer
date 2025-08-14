@@ -1,16 +1,20 @@
-"""
-Market Data MCP Server
-Provides real-time market data and basic financial metrics
-"""
+# Fixed Market Data Server - HTTP version
+# File: mcp_servers/market_data_http_server.py
 
-from fastmcp import FastMCP
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
+import uvicorn
 
-app = FastMCP("market-data")
+app = FastAPI(title="Market Data Server", version="1.0.0")
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class MarketDataProvider:
     """Handles all market data operations"""
@@ -28,21 +32,14 @@ class MarketDataProvider:
         }
     
     def get_stock_data(self, symbol: str, period: str = "1d") -> Dict[str, Any]:
-        """
-        Get stock data for a symbol
-        """
+        """Get stock data for a symbol"""
         try:
             ticker = yf.Ticker(symbol)
-            # Get historical market data
             hist = ticker.history(period=period)
-
-            # Get basic information
             info = ticker.info
 
-            # Get current price
             current_price = hist['Close'].iloc[-1] if not hist.empty else None
 
-            # Calculate basic metrics
             if len(hist) > 1:
                 price_change = current_price - hist['Close'].iloc[-2]
                 percent_change_pct = (price_change / hist['Close'].iloc[-2]) * 100
@@ -76,9 +73,7 @@ class MarketDataProvider:
             }
     
     def get_market_indices(self) -> Dict[str, Any]:
-        """
-        Get major market indices (S&P 500, NASDAQ, DOW)
-        """
+        """Get major market indices"""
         try:
             indices_data = {}
 
@@ -117,9 +112,7 @@ class MarketDataProvider:
             }
 
     def calculate_technical_indicators(self, symbol: str) -> Dict[str, Any]:
-        """
-        Calculate technical indicators (RSI, MACD, Moving Averages)
-        """
+        """Calculate technical indicators"""
         try:
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period="6mo")
@@ -191,7 +184,7 @@ class MarketDataProvider:
         return rsi.iloc[-1] if not rsi.empty else None
     
     def _calculate_macd(self, prices: pd.Series, short_window: int = 12, long_window: int = 26, signal_window: int = 9) -> tuple:
-        """Calculate MACD (Moving Average Convergence Divergence)"""
+        """Calculate MACD"""
         exp1 = prices.ewm(span=short_window, adjust=False).mean()
         exp2 = prices.ewm(span=long_window, adjust=False).mean()
         macd_line = exp1 - exp2
@@ -208,7 +201,7 @@ class MarketDataProvider:
         return upper_band.iloc[-1], rolling_mean.iloc[-1], lower_band.iloc[-1]
     
     def _generate_trading_signals(self, current_price: float, ma_20: float, ma_50: float, rsi: float, macd_line: float, macd_signal: float) -> List[str]:
-        """Generate trading signals based on technical indicators"""
+        """Generate trading signals"""
         signals = []
         
         # RSI signals
@@ -231,30 +224,44 @@ class MarketDataProvider:
         
         return signals
 
+# Initialize the market data provider
 market_provider = MarketDataProvider()
 
-@app.tool()
-def get_stock_price(symbol: str, period: str = "1d") -> Dict[str, Any]:
-    """Get current stock price and basic information
-    Args:
-        symbol (str): Stock symbol (e.g., AAPL, MSFT)
-        period (str): Period for historical data (default is "1d")
-    """
-    return market_provider.get_stock_data(symbol, period)
+# Pydantic models for request validation
+class StockRequest(BaseModel):
+    symbol: str
+    period: str = "1d"
 
-@app.tool()
-def get_portfolio_performance(symbols: List[str], weights: List[float]) -> Dict[str, Any]:
-    """Calculate portfolio performance metrics
-    Args:
-        symbols (List[str]): List of stock symbols
-        weights (List[float]): List of corresponding weights for each stock
-    """
+class PortfolioRequest(BaseModel):
+    symbols: List[str]
+    weights: List[float]
+
+# API Endpoints
+@app.get("/")
+async def root():
+    return {"message": "Market Data Server", "status": "running", "timestamp": datetime.now().isoformat()}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.post("/tools/get_stock_price")
+async def get_stock_price(request: StockRequest):
+    """Get current stock price and basic information"""
+    return market_provider.get_stock_data(request.symbol, request.period)
+
+@app.post("/tools/get_portfolio_performance")
+async def get_portfolio_performance(request: PortfolioRequest):
+    """Calculate portfolio performance metrics"""
     try:
+        symbols = request.symbols
+        weights = request.weights
+        
         if len(symbols) != len(weights):
-            return {'error': 'Number of symbols must match number of weights'}
+            raise HTTPException(status_code=400, detail='Number of symbols must match number of weights')
         
         if abs(sum(weights) - 1.0) > 0.01:
-            return {'error': 'Weights must sum to 1.0'}
+            raise HTTPException(status_code=400, detail='Weights must sum to 1.0')
         
         portfolio_data = []
         total_value = 0
@@ -287,22 +294,17 @@ def get_portfolio_performance(symbols: List[str], weights: List[float]) -> Dict[
             'timestamp': datetime.now().isoformat()
         }
     except Exception as e:
-        return {
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }
-    
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.tool()
-def get_market_overview() -> Dict[str, Any]:
+@app.get("/tools/get_market_overview")
+async def get_market_overview():
     """Get overall market overview and indices"""
     return market_provider.get_market_indices()
 
-@app.tool()
-def get_technical_analysis(symbol: str) -> Dict[str, Any]:
+@app.post("/tools/get_technical_analysis")
+async def get_technical_analysis(request: StockRequest):
     """Get technical analysis for a stock"""
-    return market_provider.calculate_technical_indicators(symbol)
+    return market_provider.calculate_technical_indicators(request.symbol)
 
 if __name__ == "__main__":
-    # Remove the port parameter - FastMCP uses stdio by default
-    app.run(host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
