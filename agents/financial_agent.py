@@ -15,42 +15,73 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+
 class FinancialAgent:
     """Main AI agent for financial analysis and coordination"""
-    
+
     def __init__(self, model: str = "gpt-4"):
         self.logger = logging.getLogger(__name__)
-        
+
         # Setup OpenAI client
-        openai.api_key = os.getenv('OPENAI_API_KEY')
+        openai.api_key = os.getenv("OPENAI_API_KEY")
         if not openai.api_key:
             raise ValueError("OPENAI_API_KEY not found in environment variables")
-        
+
         self.model = model
         self.client = openai.OpenAI()
 
         # MCP servers endpoints - AWS hosted
         self.portfolio_server = "http://ec2-3-90-112-2.compute-1.amazonaws.com:8002"
         self.market_data_server = "http://ec2-3-90-112-2.compute-1.amazonaws.com:8001"
-    
-    def call_mcp_tool(self, server_url: str, tool_name: str, **kwargs) -> Dict[str, Any]:
+
+    def call_mcp_tool(
+        self, server_url: str, tool_name: str, **kwargs
+    ) -> Dict[str, Any]:
         """
         Call a tool on the specified MCP server
+        Fixed to use appropriate HTTP methods for each endpoint
         """
         try:
-            response = requests.post(
-                f"{server_url}/tools/{tool_name}",
-                json=kwargs,
-                headers={"Content-Type": "application/json"},
-                timeout=30
-            )
+            # Determine the HTTP method based on the endpoint
+            if tool_name in [
+                "get_portfolio_overview",
+                "get_asset_allocation",
+                "get_portfolio_metrics",
+            ]:
+                # These endpoints use GET method
+                response = requests.get(
+                    f"{server_url}/tools/{tool_name}",
+                    headers={"Content-Type": "application/json"},
+                    timeout=30,
+                )
+            elif tool_name == "get_market_overview":
+                # Market overview uses GET method
+                response = requests.get(
+                    f"{server_url}/tools/{tool_name}",
+                    headers={"Content-Type": "application/json"},
+                    timeout=30,
+                )
+            else:
+                # All other endpoints use POST method with JSON data
+                response = requests.post(
+                    f"{server_url}/tools/{tool_name}",
+                    json=kwargs,
+                    headers={"Content-Type": "application/json"},
+                    timeout=30,
+                )
+
             response.raise_for_status()
             return response.json()
+
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error calling MCP tool {tool_name} on {server_url}: {e}")
+            self.logger.error(
+                f"Error calling MCP tool {tool_name} on {server_url}: {e}"
+            )
             return {"error": f"Network error: {str(e)}"}
         except Exception as e:
-            self.logger.error(f"Error calling MCP tool {tool_name} on {server_url}: {e}")
+            self.logger.error(
+                f"Error calling MCP tool {tool_name} on {server_url}: {e}"
+            )
             return {"error": str(e)}
 
     def _call_openai(self, prompt: str, system_message: str = None) -> str:
@@ -59,21 +90,18 @@ class FinancialAgent:
         """
         try:
             messages = []
-            
+
             if system_message:
                 messages.append({"role": "system", "content": system_message})
-            
+
             messages.append({"role": "user", "content": prompt})
-            
+
             response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=4000
+                model=self.model, messages=messages, temperature=0.7, max_tokens=4000
             )
-            
+
             return response.choices[0].message.content
-            
+
         except Exception as e:
             self.logger.error(f"Error calling OpenAI API: {e}")
             return f"Error generating analysis: {str(e)}"
@@ -82,29 +110,35 @@ class FinancialAgent:
         """
         Run comprehensive AI-powered portfolio analysis
         """
-        # Gather data from MCP servers
-        portfolio_data = self.call_mcp_tool(self.portfolio_server, "get_portfolio_overview")
-        market_overview = self.call_mcp_tool(self.market_data_server, "get_market_overview")
-        
+        # Gather data from MCP servers using correct HTTP methods
+        portfolio_data = self.call_mcp_tool(
+            self.portfolio_server, "get_portfolio_overview"
+        )
+        market_overview = self.call_mcp_tool(
+            self.market_data_server, "get_market_overview"
+        )
+
         # Get symbols from portfolio if not provided
-        if not symbols and portfolio_data.get('status') == 'success':
-            symbols = [pos['symbol'] for pos in portfolio_data.get('positions', [])]
+        if not symbols and portfolio_data.get("status") == "success":
+            symbols = [pos["symbol"] for pos in portfolio_data.get("positions", [])]
         elif not symbols:
             symbols = ["AAPL", "GOOGL", "MSFT"]  # Default symbols
-        
-        # Get technical analysis for key positions
+
+        # Get technical analysis for key positions (uses POST method)
         technical_analyses = {}
         for symbol in symbols[:5]:  # Limit to 5 symbols
-            tech_data = self.call_mcp_tool(self.market_data_server, "get_technical_analysis", symbol=symbol)
+            tech_data = self.call_mcp_tool(
+                self.market_data_server, "get_technical_analysis", symbol=symbol
+            )
             technical_analyses[symbol] = tech_data
-        
+
         # Create comprehensive prompt
         system_message = """
         You are a professional financial advisor and portfolio manager. Provide comprehensive, 
         actionable investment analysis based on the data provided. Structure your response with 
         clear sections and specific recommendations.
         """
-        
+
         prompt = f"""
         Conduct a comprehensive portfolio analysis based on the following data:
 
@@ -157,23 +191,29 @@ class FinancialAgent:
 
         Provide specific, quantitative recommendations where possible. Include reasoning for all recommendations.
         """
-        
+
         return self._call_openai(prompt, system_message)
-    
+
     def stock_recommendation(self, symbol: str) -> str:
         """
         Generate AI-powered stock recommendation
         """
-        # Gather stock data
-        stock_data = self.call_mcp_tool(self.market_data_server, "get_stock_price", symbol=symbol, period="6mo")
-        technical_analysis = self.call_mcp_tool(self.market_data_server, "get_technical_analysis", symbol=symbol)
-        market_overview = self.call_mcp_tool(self.market_data_server, "get_market_overview")
-        
+        # Gather stock data using POST method for specific symbol
+        stock_data = self.call_mcp_tool(
+            self.market_data_server, "get_stock_price", symbol=symbol, period="6mo"
+        )
+        technical_analysis = self.call_mcp_tool(
+            self.market_data_server, "get_technical_analysis", symbol=symbol
+        )
+        market_overview = self.call_mcp_tool(
+            self.market_data_server, "get_market_overview"
+        )
+
         system_message = """
         You are a senior equity research analyst. Provide detailed, professional stock 
         recommendations with clear reasoning and specific price targets.
         """
-        
+
         prompt = f"""
         Provide a comprehensive stock recommendation for {symbol} based on the following data:
 
@@ -222,22 +262,26 @@ class FinancialAgent:
 
         Provide specific price levels and percentage recommendations where applicable.
         """
-        
+
         return self._call_openai(prompt, system_message)
-    
+
     def portfolio_optimization_advice(self) -> str:
         """
         Provide portfolio optimization recommendations
         """
-        # Gather portfolio data
-        portfolio_summary = self.call_mcp_tool(self.portfolio_server, "get_portfolio_overview")
-        market_overview = self.call_mcp_tool(self.market_data_server, "get_market_overview")
-        
+        # Gather portfolio data using GET method
+        portfolio_summary = self.call_mcp_tool(
+            self.portfolio_server, "get_portfolio_overview"
+        )
+        market_overview = self.call_mcp_tool(
+            self.market_data_server, "get_market_overview"
+        )
+
         system_message = """
         You are a portfolio optimization specialist. Provide actionable recommendations 
         to improve risk-adjusted returns and portfolio efficiency.
         """
-        
+
         prompt = f"""
         Analyze the portfolio and provide optimization recommendations:
 
@@ -276,23 +320,29 @@ class FinancialAgent:
 
         Provide specific percentage allocations and actionable steps.
         """
-        
+
         return self._call_openai(prompt, system_message)
-    
+
     def market_outlook_analysis(self) -> str:
         """
         Generate market outlook based on multiple factors
         """
         # Get market data
-        market_overview = self.call_mcp_tool(self.market_data_server, "get_market_overview")
-        sp500_technical = self.call_mcp_tool(self.market_data_server, "get_technical_analysis", symbol="^GSPC")
-        nasdaq_technical = self.call_mcp_tool(self.market_data_server, "get_technical_analysis", symbol="^IXIC")
-        
+        market_overview = self.call_mcp_tool(
+            self.market_data_server, "get_market_overview"
+        )
+        sp500_technical = self.call_mcp_tool(
+            self.market_data_server, "get_technical_analysis", symbol="^GSPC"
+        )
+        nasdaq_technical = self.call_mcp_tool(
+            self.market_data_server, "get_technical_analysis", symbol="^IXIC"
+        )
+
         system_message = """
         You are a chief market strategist. Provide comprehensive market outlook with 
         specific implications for investment strategy.
         """
-        
+
         prompt = f"""
         Provide comprehensive market outlook analysis:
 
@@ -339,17 +389,18 @@ class FinancialAgent:
 
         Include specific index levels and percentage probability assessments where possible.
         """
-        
+
         return self._call_openai(prompt, system_message)
+
 
 class NewsAnalysisAgent:
     """Specialized agent for news and sentiment analysis"""
-    
+
     def __init__(self, model: str = "gpt-4"):
         self.logger = logging.getLogger(__name__)
         self.model = model
         self.client = openai.OpenAI()
-    
+
     def _call_openai(self, prompt: str, system_message: str = None) -> str:
         """Call OpenAI API"""
         try:
@@ -357,30 +408,27 @@ class NewsAnalysisAgent:
             if system_message:
                 messages.append({"role": "system", "content": system_message})
             messages.append({"role": "user", "content": prompt})
-            
+
             response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=3000
+                model=self.model, messages=messages, temperature=0.7, max_tokens=3000
             )
             return response.choices[0].message.content
         except Exception as e:
             return f"Error in news analysis: {str(e)}"
-    
+
     def analyze_market_news(self, symbols: List[str]) -> Dict[str, Any]:
         """
         Analyze news impact on portfolio symbols
         """
         try:
             news_analysis = {
-                'overall_sentiment': {},
-                'symbol_specific': {},
-                'market_themes': [],
-                'risk_alerts': [],
-                'timestamp': datetime.now().isoformat()
+                "overall_sentiment": {},
+                "symbol_specific": {},
+                "market_themes": [],
+                "risk_alerts": [],
+                "timestamp": datetime.now().isoformat(),
             }
-            
+
             # Overall market sentiment
             overall_prompt = """
             Based on current market conditions and recent developments, provide an overall 
@@ -395,15 +443,17 @@ class NewsAnalysisAgent:
             4. OPPORTUNITIES (areas of potential strength)
             5. TIMELINE OUTLOOK (short vs medium-term view)
             """
-            
-            system_message = "You are a financial news analyst providing market sentiment analysis."
+
+            system_message = (
+                "You are a financial news analyst providing market sentiment analysis."
+            )
             overall_analysis = self._call_openai(overall_prompt, system_message)
-            
-            news_analysis['overall_sentiment'] = {
-                'analysis': overall_analysis,
-                'timestamp': datetime.now().isoformat()
+
+            news_analysis["overall_sentiment"] = {
+                "analysis": overall_analysis,
+                "timestamp": datetime.now().isoformat(),
             }
-            
+
             # Symbol-specific analysis
             for symbol in symbols[:5]:
                 symbol_prompt = f"""
@@ -418,36 +468,34 @@ class NewsAnalysisAgent:
                 4. OPPORTUNITY HIGHLIGHTS for positive catalysts
                 5. PRICE IMPACT ASSESSMENT (likely direction and magnitude)
                 """
-                
+
                 try:
                     analysis = self._call_openai(symbol_prompt, system_message)
-                    news_analysis['symbol_specific'][symbol] = {
-                        'analysis': analysis,
-                        'timestamp': datetime.now().isoformat()
+                    news_analysis["symbol_specific"][symbol] = {
+                        "analysis": analysis,
+                        "timestamp": datetime.now().isoformat(),
                     }
                 except Exception as e:
-                    news_analysis['symbol_specific'][symbol] = {
-                        'error': str(e),
-                        'timestamp': datetime.now().isoformat()
+                    news_analysis["symbol_specific"][symbol] = {
+                        "error": str(e),
+                        "timestamp": datetime.now().isoformat(),
                     }
-            
+
             return news_analysis
-            
+
         except Exception as e:
             self.logger.error(f"Error in news analysis: {e}")
-            return {
-                'error': str(e),
-                'timestamp': datetime.now().isoformat()
-            }
+            return {"error": str(e), "timestamp": datetime.now().isoformat()}
+
 
 class RiskManagementAgent:
     """Specialized agent for risk management"""
-    
+
     def __init__(self, model: str = "gpt-4"):
         self.logger = logging.getLogger(__name__)
         self.model = model
         self.client = openai.OpenAI()
-    
+
     def _call_openai(self, prompt: str, system_message: str = None) -> str:
         """Call OpenAI API"""
         try:
@@ -455,17 +503,17 @@ class RiskManagementAgent:
             if system_message:
                 messages.append({"role": "system", "content": system_message})
             messages.append({"role": "user", "content": prompt})
-            
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=0.3,  # Lower temperature for risk analysis
-                max_tokens=3000
+                max_tokens=3000,
             )
             return response.choices[0].message.content
         except Exception as e:
             return f"Error in risk analysis: {str(e)}"
-    
+
     def assess_portfolio_risk(self, portfolio_data: Dict) -> Dict[str, Any]:
         """
         Comprehensive portfolio risk assessment
@@ -475,7 +523,7 @@ class RiskManagementAgent:
             You are a senior risk management specialist. Provide comprehensive, quantitative 
             risk assessment with specific recommendations and actionable risk mitigation strategies.
             """
-            
+
             prompt = f"""
             Conduct comprehensive portfolio risk assessment:
 
@@ -525,178 +573,199 @@ class RiskManagementAgent:
 
             Provide specific, quantitative recommendations with clear implementation steps.
             """
-            
+
             risk_assessment = self._call_openai(prompt, system_message)
-            
+
             return {
-                'status': 'success',
-                'risk_assessment': risk_assessment,
-                'timestamp': datetime.now().isoformat(),
-                'portfolio_analyzed': bool(portfolio_data and portfolio_data.get('status') == 'success')
+                "status": "success",
+                "risk_assessment": risk_assessment,
+                "timestamp": datetime.now().isoformat(),
+                "portfolio_analyzed": bool(
+                    portfolio_data and portfolio_data.get("status") == "success"
+                ),
             }
-            
+
         except Exception as e:
             self.logger.error(f"Error in risk assessment: {e}")
             return {
-                'status': 'error',
-                'error': str(e),
-                'timestamp': datetime.now().isoformat()
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
             }
+
 
 class FinancialAICoordinator:
     """Coordinates all AI agents for comprehensive financial analysis"""
-    
+
     def __init__(self):
         self.financial_agent = FinancialAgent()
         self.news_agent = NewsAnalysisAgent()
         self.risk_agent = RiskManagementAgent()
         self.logger = logging.getLogger(__name__)
-    
+
     def run_full_analysis(self, symbols: List[str] = None) -> Dict[str, Any]:
         """Run comprehensive analysis using all agents"""
         results = {
-            'timestamp': datetime.now().isoformat(),
-            'analysis_type': 'comprehensive',
-            'symbols_analyzed': symbols or []
+            "timestamp": datetime.now().isoformat(),
+            "analysis_type": "comprehensive",
+            "symbols_analyzed": symbols or [],
         }
-        
+
         try:
             # Main portfolio analysis
             self.logger.info("Running comprehensive portfolio analysis...")
-            results['portfolio_analysis'] = self.financial_agent.comprehensive_portfolio_analysis(symbols)
-            
+            results["portfolio_analysis"] = (
+                self.financial_agent.comprehensive_portfolio_analysis(symbols)
+            )
+
             # News and sentiment analysis
             if symbols:
                 self.logger.info("Running news analysis...")
-                results['news_analysis'] = self.news_agent.analyze_market_news(symbols)
-            
+                results["news_analysis"] = self.news_agent.analyze_market_news(symbols)
+
             # Market outlook
             self.logger.info("Running market outlook analysis...")
-            results['market_outlook'] = self.financial_agent.market_outlook_analysis()
-            
+            results["market_outlook"] = self.financial_agent.market_outlook_analysis()
+
             # Risk assessment
             self.logger.info("Running risk assessment...")
             portfolio_data = self.financial_agent.call_mcp_tool(
-                self.financial_agent.portfolio_server, 
-                "get_portfolio_overview"
+                self.financial_agent.portfolio_server, "get_portfolio_overview"
             )
-            results['risk_assessment'] = self.risk_agent.assess_portfolio_risk(portfolio_data)
-            
+            results["risk_assessment"] = self.risk_agent.assess_portfolio_risk(
+                portfolio_data
+            )
+
             # Portfolio optimization
             self.logger.info("Running portfolio optimization...")
-            results['optimization_advice'] = self.financial_agent.portfolio_optimization_advice()
-            
-            results['status'] = 'success'
+            results["optimization_advice"] = (
+                self.financial_agent.portfolio_optimization_advice()
+            )
+
+            results["status"] = "success"
             self.logger.info("Comprehensive analysis completed successfully")
-            
+
         except Exception as e:
             self.logger.error(f"Error in full analysis: {e}")
-            results['status'] = 'error'
-            results['error'] = str(e)
-        
+            results["status"] = "error"
+            results["error"] = str(e)
+
         return results
+
 
 # Utility functions for testing and validation
 def test_mcp_connectivity() -> Dict[str, bool]:
     """Test connectivity to MCP servers"""
     servers = {
         "Portfolio Server": "http://ec2-3-90-112-2.compute-1.amazonaws.com:8002",
-        "Market Data Server": "http://ec2-3-90-112-2.compute-1.amazonaws.com:8001"
+        "Market Data Server": "http://ec2-3-90-112-2.compute-1.amazonaws.com:8001",
     }
-    
+
     connectivity = {}
     for name, url in servers.items():
         try:
-            response = requests.get(url, timeout=10)
-            connectivity[name] = True
+            response = requests.get(f"{url}/health", timeout=10)
+            connectivity[name] = response.status_code == 200
         except:
             connectivity[name] = False
-    
+
     return connectivity
+
 
 def validate_agent_setup() -> Dict[str, Any]:
     """Validate agent setup and configuration"""
     validation = {
-        'timestamp': datetime.now().isoformat(),
-        'mcp_servers': test_mcp_connectivity(),
-        'agent_initialization': {},
-        'api_keys': {}
+        "timestamp": datetime.now().isoformat(),
+        "mcp_servers": test_mcp_connectivity(),
+        "agent_initialization": {},
+        "api_keys": {},
     }
-    
+
     # Check API keys
-    validation['api_keys']['openai'] = bool(os.getenv('OPENAI_API_KEY'))
-    validation['api_keys']['anthropic'] = bool(os.getenv('ANTHROPIC_API_KEY'))
-    
+    validation["api_keys"]["openai"] = bool(os.getenv("OPENAI_API_KEY"))
+    validation["api_keys"]["anthropic"] = bool(os.getenv("ANTHROPIC_API_KEY"))
+
     try:
         # Test agent initialization
         agent = FinancialAgent()
-        validation['agent_initialization']['FinancialAgent'] = True
-        
+        validation["agent_initialization"]["FinancialAgent"] = True
+
         news_agent = NewsAnalysisAgent()
-        validation['agent_initialization']['NewsAnalysisAgent'] = True
-        
+        validation["agent_initialization"]["NewsAnalysisAgent"] = True
+
         risk_agent = RiskManagementAgent()
-        validation['agent_initialization']['RiskManagementAgent'] = True
-        
+        validation["agent_initialization"]["RiskManagementAgent"] = True
+
         coordinator = FinancialAICoordinator()
-        validation['agent_initialization']['FinancialAICoordinator'] = True
-        
+        validation["agent_initialization"]["FinancialAICoordinator"] = True
+
     except Exception as e:
-        validation['agent_initialization']['error'] = str(e)
-    
+        validation["agent_initialization"]["error"] = str(e)
+
     return validation
+
 
 # Example usage and testing
 if __name__ == "__main__":
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    
+
     print("=== FINANCIAL AI AGENT SYSTEM ===")
     print("Initializing agents and testing connectivity...")
-    
+
     # Validate setup
     validation = validate_agent_setup()
     print(f"\nSystem validation:")
     print(f"MCP Servers: {validation['mcp_servers']}")
     print(f"API Keys: {validation['api_keys']}")
     print(f"Agent Initialization: {validation['agent_initialization']}")
-    
+
     # Quick connectivity test
-    if all(validation['mcp_servers'].values()):
+    if all(validation["mcp_servers"].values()):
         print("\n✅ MCP servers are accessible")
-        
+
         # Initialize the coordinator
         coordinator = FinancialAICoordinator()
-        
+
         # Test with sample portfolio
-        test_symbols = ['AAPL', 'GOOGL', 'MSFT']
+        test_symbols = ["AAPL", "GOOGL", "MSFT"]
         print(f"\nRunning comprehensive analysis for: {test_symbols}")
-        
+
         # Run comprehensive analysis
         results = coordinator.run_full_analysis(test_symbols)
-        
+
         # Display results
         print(f"\n=== ANALYSIS RESULTS ===")
         print(f"Status: {results['status']}")
         print(f"Timestamp: {results['timestamp']}")
-        
-        if results['status'] == 'success':
-            print(f"\n✅ Portfolio Analysis: {'Available' if 'portfolio_analysis' in results else 'Failed'}")
-            print(f"✅ News Analysis: {'Available' if 'news_analysis' in results else 'Failed'}")
-            print(f"✅ Market Outlook: {'Available' if 'market_outlook' in results else 'Failed'}")
-            print(f"✅ Risk Assessment: {'Available' if 'risk_assessment' in results else 'Failed'}")
-            print(f"✅ Optimization Advice: {'Available' if 'optimization_advice' in results else 'Failed'}")
-            
+
+        if results["status"] == "success":
+            print(
+                f"\n✅ Portfolio Analysis: {'Available' if 'portfolio_analysis' in results else 'Failed'}"
+            )
+            print(
+                f"✅ News Analysis: {'Available' if 'news_analysis' in results else 'Failed'}"
+            )
+            print(
+                f"✅ Market Outlook: {'Available' if 'market_outlook' in results else 'Failed'}"
+            )
+            print(
+                f"✅ Risk Assessment: {'Available' if 'risk_assessment' in results else 'Failed'}"
+            )
+            print(
+                f"✅ Optimization Advice: {'Available' if 'optimization_advice' in results else 'Failed'}"
+            )
+
             # Show sample output
-            if 'portfolio_analysis' in results:
+            if "portfolio_analysis" in results:
                 print(f"\n=== PORTFOLIO ANALYSIS PREVIEW ===")
-                analysis = results['portfolio_analysis']
+                analysis = results["portfolio_analysis"]
                 preview = analysis[:500] + "..." if len(analysis) > 500 else analysis
                 print(preview)
-                
+
         else:
             print(f"❌ Analysis failed: {results.get('error', 'Unknown error')}")
     else:
