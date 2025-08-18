@@ -8,6 +8,7 @@ import json
 from typing import Dict, Any, List
 import logging
 import requests
+from datetime import datetime
 
 class FinancialAgent:
     """Main AI agent for financial analysis and coordination"""
@@ -15,27 +16,30 @@ class FinancialAgent:
     def __init__(self, model: str = "gpt-4"):
         self.logger = logging.getLogger(__name__)
         self.mcp_config = self.setup_mcp_config()
-        try: 
+        
+        # Initialize the agent with MCP server configuration
+        try:
             self.agent = Agent(model=model, mcp_servers=self.mcp_config)
         except Exception as e:
             self.logger.warning(f"Could not initialize agent with MCP servers: {e}")
             # Fallback to basic agent
             self.agent = Agent(model=model)
 
-        # MCP servers endpoints
-        self.portfolio_server = "http://localhost:8002"
-        self.market_data_server = "http://localhost:8001"
+        # MCP servers endpoints - AWS hosted
+        self.portfolio_server = "http://ec2-3-90-112-2.compute-1.amazonaws.com:8002"
+        self.market_data_server = "http://ec2-3-90-112-2.compute-1.amazonaws.com:8001"
     
     def setup_mcp_config(self) -> Dict[str, Any]:
         """
         Configure MCP servers for the agent
+        Setup connections to all MCP servers
         """
         config = {
             "servers": [
                 {
                     "name": "portfolio-management",
-                    "url": "http://localhost:8002",
-                    "description": "MCP server for portfolio management - handles portfolio tracking, positions, transactions, and analytics",
+                    "url": "http://ec2-3-90-112-2.compute-1.amazonaws.com:8002",
+                    "description": "Portfolio management server - handles positions, transactions, and analytics",
                     "tools": [
                         "add_stock_position",
                         "get_portfolio_overview", 
@@ -47,8 +51,8 @@ class FinancialAgent:
                 },
                 {
                     "name": "market-data",
-                    "url": "http://localhost:8001",
-                    "description": "MCP server for market data",
+                    "url": "http://ec2-3-90-112-2.compute-1.amazonaws.com:8001",
+                    "description": "Market data server - provides real-time data and technical analysis",
                     "tools": [
                         "get_stock_price",
                         "get_portfolio_performance", 
@@ -68,111 +72,40 @@ class FinancialAgent:
             response = requests.post(
                 f"{server_url}/tools/{tool_name}",
                 json=kwargs,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
+                timeout=30
             )
+            response.raise_for_status()
             return response.json()
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error calling MCP tool {tool_name} on {server_url}: {e}")
+            return {"error": f"Network error: {str(e)}"}
         except Exception as e:
             self.logger.error(f"Error calling MCP tool {tool_name} on {server_url}: {e}")
             return {"error": str(e)}
 
-    def comprehensive_portfolio_analysis_without_agent_intelligence(self, symbols: List[str] = None) -> str:
-        """
-        Run comprehensive AI-powered portfolio analysis
-        Orchestrate analysis across multiple MCP servers
-        """
-        if not symbols:
-            # Get current portfolio symbols from the portfolio server
-            try:
-                portfolio_data = self.call_mcp_tool(self.portfolio_server, "get_portfolio_overview")
-                if portfolio_data.get('status') == 'success' and portfolio_data.get('positions'):
-                    symbols = [pos['symbol'] for pos in portfolio_data['positions']]
-                else:
-                    symbols = ["AAPL", "GOOGL", "MSFT", "TSLA"]  # Default portfolio
-            except:
-                symbols = ["AAPL", "GOOGL", "MSFT", "TSLA"]  # Default portfolio if error occurs
-        
-        analysis_data = {
-            'portfolio_summary': {},
-            'market_data': {},
-            'technical_analysis': {},
-            'portfolio_metrics': {},
-            'market_overview': {},
-            'timestamp': datetime.now().isoformat()
-        }
-
-        try:
-            # STEP 1: Get current portfolio summary and positions
-            portfolio_summary = self.call_mcp_tool(self.portfolio_server, "get_portfolio_overview")
-            analysis_data['portfolio_summary'] = portfolio_summary
-            
-            portfolio_metrics = self.call_mcp_tool(self.portfolio_server, "get_portfolio_metrics")
-            analysis_data['portfolio_metrics'] = portfolio_metrics
-            
-            asset_allocation = self.call_mcp_tool(self.portfolio_server, "get_asset_allocation")
-            analysis_data['asset_allocation'] = asset_allocation
-            
-            # STEP 2: For each stock, get current market data and technical analysis
-            for symbol in symbols:
-                # Get current market data
-                stock_data = self.call_mcp_tool(self.market_data_server, "get_stock_price", symbol=symbol, period="1mo")
-                analysis_data['market_data'][symbol] = stock_data
-                
-                # Get technical analysis
-                technical_data = self.call_mcp_tool(self.market_data_server, "get_technical_analysis", symbol=symbol)
-                analysis_data['technical_analysis'][symbol] = technical_data
-            
-            # STEP 3: Get overall market overview
-            market_overview = self.call_mcp_tool(self.market_data_server, "get_market_overview")
-            analysis_data['market_overview'] = market_overview
-            
-        except Exception as e:
-            self.logger.error(f"Error gathering analysis data: {str(e)}")
-        
-        # STEP 4: Generate AI-powered analysis
-        prompt = f"""
-        Perform a comprehensive AI-powered analysis for portfolio: {symbols}
-        
-        STEP 1: Get current portfolio summary and positions
-        STEP 2: For each stock, get:
-            - Current market data and prices
-            - AI sentiment analysis from recent news
-            - AI-powered price predictions
-        STEP 3: Generate portfolio-level insights:
-            - Overall risk assessment
-            - Rebalancing recommendations
-            - New position suggestions
-            - Market outlook
-        
-        STEP 4: Create actionable recommendations with:
-            - Specific buy/sell/hold decisions
-            - Position sizing recommendations
-            - Risk management strategies
-            - Timeline for implementation
-        
-        Present results in a professional, structured format with clear sections.
-        """
-        
-        return self.agent.run(prompt)
-    
     def comprehensive_portfolio_analysis(self, symbols: List[str] = None) -> str:
+        """
+        Run comprehensive AI-powered portfolio analysis with agent intelligence
+        """
         prompt = f"""
         You are a professional financial advisor with access to real-time market data and portfolio information.
         Conduct a comprehensive portfolio analysis using the available tools.
         
-        AVAILABLE TOOLS:
-        Portfolio Management Server (http://localhost:8002):
-            - get_portfolio_overview: Get current positions, P&L, and allocation
-            - get_portfolio_metrics: Get Sharpe ratio, beta, volatility, max drawdown
-            - calculate_returns: Get returns for various timeframes
-            - get_asset_allocation: Get sector and symbol allocation breakdown
-            
-            Market Data Server (http://localhost:8001):
-            - get_stock_price: Get current market data for any symbol
-            - get_technical_analysis: Get RSI, MACD, moving averages, signals
-            - get_market_overview: Get major market indices and trends
-            - get_portfolio_performance: Calculate weighted portfolio performance
+        AVAILABLE MCP TOOLS:
+        Portfolio Management Server (http://ec2-3-90-112-2.compute-1.amazonaws.com:8002):
+        - get_portfolio_overview: Get current positions, P&L, and allocation
+        - get_portfolio_metrics: Get Sharpe ratio, beta, volatility, max drawdown
+        - calculate_returns: Get returns for various timeframes
+        - get_asset_allocation: Get sector and symbol allocation breakdown
         
-        ANALYSIS REQUIREMENTS:
+        Market Data Server (http://ec2-3-90-112-2.compute-1.amazonaws.com:8001):
+        - get_stock_price: Get current market data for any symbol
+        - get_technical_analysis: Get RSI, MACD, moving averages, signals
+        - get_market_overview: Get major market indices and trends
+        - get_portfolio_performance: Calculate weighted portfolio performance
+        
+        ANALYSIS FRAMEWORK:
         1. Start with portfolio overview to understand current positions
         2. For each significant holding (>5% allocation), get detailed technical analysis
         3. Always include portfolio risk metrics (Sharpe, beta, volatility)
@@ -215,7 +148,7 @@ class FinancialAgent:
 
         Call the appropriate tools based on your professional judgment and provide comprehensive analysis.
         """
-    
+        
         if symbols:
             prompt += f"\n\nSpecific symbols to analyze: {symbols}"
     
@@ -224,14 +157,46 @@ class FinancialAgent:
         except Exception as e:
             self.logger.error(f"Error in comprehensive analysis: {e}")
             # Fallback to manual orchestration if agent fails
-            # return self._fallback_portfolio_analysis(symbols) TODO: Implement if needed
+            return self._fallback_portfolio_analysis(symbols)
+    
+    def _fallback_portfolio_analysis(self, symbols: List[str] = None) -> str:
+        """
+        Fallback method that manually orchestrates analysis if agent automation fails
+        """
+        try:
+            # Gather data manually
+            portfolio_data = self.call_mcp_tool(self.portfolio_server, "get_portfolio_overview")
+            portfolio_metrics = self.call_mcp_tool(self.portfolio_server, "get_portfolio_metrics")
+            market_overview = self.call_mcp_tool(self.market_data_server, "get_market_overview")
+            
+            if not symbols and portfolio_data.get('status') == 'success':
+                symbols = [pos['symbol'] for pos in portfolio_data.get('positions', [])]
+            
+            # Manual analysis prompt with gathered data
+            prompt = f"""
+            Based on the following portfolio and market data, provide a comprehensive analysis:
+            
+            PORTFOLIO DATA:
+            {json.dumps(portfolio_data, indent=2)}
+            
+            PORTFOLIO METRICS:
+            {json.dumps(portfolio_metrics, indent=2)}
+            
+            MARKET OVERVIEW:
+            {json.dumps(market_overview, indent=2)}
+            
+            Provide professional portfolio analysis with specific recommendations.
+            """
+            
+            return self.agent.run(prompt)
+            
+        except Exception as e:
+            return f"Error in portfolio analysis: {str(e)}"
     
     def stock_recommendation(self, symbol: str) -> str:
         """
-        Generate AI-powered stock recommendation
-        Analyze stock using multiple data sources
+        Generate AI-powered stock recommendation with intelligent tool usage
         """
-     
         prompt = f"""
         You are a senior equity research analyst. Provide a comprehensive stock recommendation for {symbol}.
         
@@ -276,7 +241,7 @@ class FinancialAgent:
         
         Use the available tools intelligently to gather the data you need for this analysis.
         """
-
+        
         try:
             return self.agent.run(prompt)
         except Exception as e:
@@ -285,21 +250,8 @@ class FinancialAgent:
     
     def portfolio_optimization_advice(self) -> str:
         """
-        Provide portfolio optimization recommendations
-        Use risk analysis and predictions for optimization advice
+        Provide portfolio optimization recommendations using intelligent analysis
         """
-        
-            # Gather portfolio data
-            # portfolio_summary = self.call_mcp_tool(self.portfolio_server, "get_portfolio_overview")
-            # portfolio_metrics = self.call_mcp_tool(self.portfolio_server, "get_portfolio_metrics")
-            # asset_allocation = self.call_mcp_tool(self.portfolio_server, "get_asset_allocation")
-            # market_overview = self.call_mcp_tool(self.market_data_server, "get_market_overview")
-            
-            # # Get returns for multiple timeframes
-            # returns_1m = self.call_mcp_tool(self.portfolio_server, "calculate_returns", timeframe="1M")
-            # returns_3m = self.call_mcp_tool(self.portfolio_server, "calculate_returns", timeframe="3M")
-            # returns_6m = self.call_mcp_tool(self.portfolio_server, "calculate_returns", timeframe="6M")
-            
         prompt = f"""
         You are a portfolio optimization specialist. Analyze the current portfolio and provide optimization recommendations.
         
@@ -350,94 +302,8 @@ class FinancialAgent:
     
     def market_outlook_analysis(self) -> str:
         """
-        Generate market outlook based on multiple factors
-        Analyze market sentiment, news, and technical indicators
+        Generate market outlook based on multiple factors using intelligent analysis
         """
-        # try:
-        #     # Get comprehensive market data
-        #     market_overview = self.call_mcp_tool(self.market_data_server, "get_market_overview")
-            
-        #     # Get technical analysis for major indices
-        #     sp500_technical = self.call_mcp_tool(self.market_data_server, "get_technical_analysis", symbol="^GSPC")
-        #     nasdaq_technical = self.call_mcp_tool(self.market_data_server, "get_technical_analysis", symbol="^IXIC")
-            
-        #     # Get data for key economic indicators via major ETFs
-        #     vix_data = self.call_mcp_tool(self.market_data_server, "get_stock_price", symbol="^VIX", period="3mo")
-        #     dxy_data = self.call_mcp_tool(self.market_data_server, "get_stock_price", symbol="DX-Y.NYB", period="3mo")
-            
-        #     prompt = f"""
-        #     You are a chief market strategist. Provide a comprehensive market outlook analysis.
-
-        #     MARKET OVERVIEW:
-        #     {json.dumps(market_overview, indent=2)}
-
-        #     S&P 500 TECHNICAL ANALYSIS:
-        #     {json.dumps(sp500_technical, indent=2)}
-
-        #     NASDAQ TECHNICAL ANALYSIS:
-        #     {json.dumps(nasdaq_technical, indent=2)}
-
-        #     FEAR & GREED INDICATOR (VIX):
-        #     {json.dumps(vix_data, indent=2)}
-
-        #     Provide a comprehensive market outlook:
-
-        #     ## EXECUTIVE MARKET SUMMARY
-        #     - Overall market sentiment assessment
-        #     - Key market themes and trends
-        #     - Market regime identification (bull/bear/transitional)
-
-        #     ## TECHNICAL MARKET ANALYSIS
-        #     - Major indices technical outlook
-        #     - Key support and resistance levels
-        #     - Trend analysis and momentum assessment
-        #     - Volume and breadth analysis
-
-        #     ## MARKET SENTIMENT INDICATORS
-        #     - VIX and volatility analysis
-        #     - Fear & greed assessment
-        #     - Risk-on vs risk-off positioning
-
-        #     ## SECTOR ROTATION ANALYSIS
-        #     - Leading and lagging sectors
-        #     - Rotation opportunities
-        #     - Defensive vs growth positioning
-
-        #     ## ECONOMIC BACKDROP
-        #     - Interest rate environment impact
-        #     - Inflation considerations
-        #     - Economic cycle positioning
-
-        #     ## RISK FACTORS AND CATALYSTS
-        #     - Key upside catalysts for markets
-        #     - Major risk factors to monitor
-        #     - Black swan considerations
-
-        #     ## INVESTMENT STRATEGY IMPLICATIONS
-        #     - Recommended market positioning
-        #     - Asset allocation guidance
-        #     - Hedging considerations
-
-        #     ## SHORT-TERM OUTLOOK (1-3 months)
-        #     - Near-term market direction
-        #     - Key levels to watch
-        #     - Tactical positioning recommendations
-
-        #     ## MEDIUM-TERM OUTLOOK (3-12 months)
-        #     - Longer-term market trajectory
-        #     - Structural trends to consider
-        #     - Strategic positioning recommendations
-
-        #     ## MONITORING CHECKLIST
-        #     - Key indicators to track
-        #     - Warning signals to watch
-        #     - Review frequency recommendations
-
-        #     Provide specific, actionable insights with clear reasoning and quantitative levels where applicable.
-        #     """
-            
-        #     return self.agent.run(prompt)
-
         prompt = f"""
         You are a chief market strategist. Provide a comprehensive market outlook analysis.
         
@@ -480,7 +346,7 @@ class FinancialAgent:
         
         Use the available tools intelligently to gather market data for comprehensive analysis.
         """
-            
+        
         try:
             return self.agent.run(prompt)
         except Exception as e:
@@ -490,16 +356,6 @@ class FinancialAgent:
 class NewsAnalysisAgent:
     """Specialized agent for news and sentiment analysis"""
     
-    # def __init__(self, model: str = "claude-3-sonnet-20240229"):
-    #     self.logger = logging.getLogger(__name__)
-    #     self.agent = Agent(model=model)
-    #     self.news_sources = [
-    #         "https://finance.yahoo.com/",
-    #         "https://www.cnbc.com/business/",
-    #         "https://www.bloomberg.com/markets",
-    #         "https://www.reuters.com/business/"
-    #     ]
-
     def __init__(self, model: str = "claude-3-sonnet-20240229"):
         self.logger = logging.getLogger(__name__)
         try:
@@ -593,7 +449,7 @@ class NewsAnalysisAgent:
                 'error': str(e),
                 'timestamp': datetime.now().isoformat()
             }
-        
+
 class RiskManagementAgent:
     """Specialized agent for risk management"""
     
@@ -725,13 +581,13 @@ class FinancialAICoordinator:
             results['error'] = str(e)
         
         return results
-    
+
 # Utility functions for testing and validation
 def test_mcp_connectivity() -> Dict[str, bool]:
     """Test connectivity to MCP servers"""
     servers = {
-        "Portfolio Server": "http://localhost:8002",
-        "Market Data Server": "http://localhost:8001"
+        "Portfolio Server": "http://ec2-3-90-112-2.compute-1.amazonaws.com:8002",
+        "Market Data Server": "http://ec2-3-90-112-2.compute-1.amazonaws.com:8001"
     }
     
     connectivity = {}
@@ -817,3 +673,4 @@ if __name__ == "__main__":
             
     else:
         print(f"❌ Analysis failed: {results.get('error', 'Unknown error')}")
+        
