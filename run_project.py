@@ -5,6 +5,7 @@ Execute this file to verify the project structure
 
 import os
 
+
 def verify_project_structure():
     """Verify that all project files were created"""
     required_files = [
@@ -16,14 +17,14 @@ def verify_project_structure():
         "agents/financial_agent.py",
         "dashboard/main_dashboard.py",
         "scripts/start_all_services.py",
-        "config/mcp_config.json"
+        "config/mcp_config.json",
     ]
-    
+
     missing_files = []
     for file in required_files:
         if not os.path.exists(file):
             missing_files.append(file)
-    
+
     if missing_files:
         print("❌ Missing files:")
         for file in missing_files:
@@ -33,10 +34,11 @@ def verify_project_structure():
         print("✅ All required files are present!")
         return True
 
+
 if __name__ == "__main__":
     print("🚀 Financial Portfolio Analyzer Project Verification")
     print("=" * 50)
-    
+
     if verify_project_structure():
         print()
         print("📋 Next Steps:")

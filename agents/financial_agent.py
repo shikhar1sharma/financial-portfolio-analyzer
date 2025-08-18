@@ -10,13 +10,14 @@ import logging
 import requests
 from datetime import datetime
 
+
 class FinancialAgent:
     """Main AI agent for financial analysis and coordination"""
-    
+
     def __init__(self, model: str = "gpt-4"):
         self.logger = logging.getLogger(__name__)
         self.mcp_config = self.setup_mcp_config()
-        
+
         # Initialize the agent with MCP server configuration
         try:
             self.agent = Agent(model=model, mcp_servers=self.mcp_config)
@@ -28,7 +29,7 @@ class FinancialAgent:
         # MCP servers endpoints - AWS hosted
         self.portfolio_server = "http://ec2-3-90-112-2.compute-1.amazonaws.com:8002"
         self.market_data_server = "http://ec2-3-90-112-2.compute-1.amazonaws.com:8001"
-    
+
     def setup_mcp_config(self) -> Dict[str, Any]:
         """
         Configure MCP servers for the agent
@@ -42,12 +43,12 @@ class FinancialAgent:
                     "description": "Portfolio management server - handles positions, transactions, and analytics",
                     "tools": [
                         "add_stock_position",
-                        "get_portfolio_overview", 
+                        "get_portfolio_overview",
                         "calculate_returns",
                         "get_asset_allocation",
                         "get_portfolio_metrics",
-                        "sell_position"
-                    ]
+                        "sell_position",
+                    ],
                 },
                 {
                     "name": "market-data",
@@ -55,16 +56,18 @@ class FinancialAgent:
                     "description": "Market data server - provides real-time data and technical analysis",
                     "tools": [
                         "get_stock_price",
-                        "get_portfolio_performance", 
+                        "get_portfolio_performance",
                         "get_market_overview",
-                        "get_technical_analysis"
-                    ]
-                }
+                        "get_technical_analysis",
+                    ],
+                },
             ]
         }
         return config
-    
-    def call_mcp_tool(self, server_url: str, tool_name: str, **kwargs) -> Dict[str, Any]:
+
+    def call_mcp_tool(
+        self, server_url: str, tool_name: str, **kwargs
+    ) -> Dict[str, Any]:
         """
         Call a tool on the specified MCP server
         """
@@ -73,15 +76,19 @@ class FinancialAgent:
                 f"{server_url}/tools/{tool_name}",
                 json=kwargs,
                 headers={"Content-Type": "application/json"},
-                timeout=30
+                timeout=30,
             )
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error calling MCP tool {tool_name} on {server_url}: {e}")
+            self.logger.error(
+                f"Error calling MCP tool {tool_name} on {server_url}: {e}"
+            )
             return {"error": f"Network error: {str(e)}"}
         except Exception as e:
-            self.logger.error(f"Error calling MCP tool {tool_name} on {server_url}: {e}")
+            self.logger.error(
+                f"Error calling MCP tool {tool_name} on {server_url}: {e}"
+            )
             return {"error": str(e)}
 
     def comprehensive_portfolio_analysis(self, symbols: List[str] = None) -> str:
@@ -148,30 +155,36 @@ class FinancialAgent:
 
         Call the appropriate tools based on your professional judgment and provide comprehensive analysis.
         """
-        
+
         if symbols:
             prompt += f"\n\nSpecific symbols to analyze: {symbols}"
-    
+
         try:
             return self.agent.run(prompt)
         except Exception as e:
             self.logger.error(f"Error in comprehensive analysis: {e}")
             # Fallback to manual orchestration if agent fails
             return self._fallback_portfolio_analysis(symbols)
-    
+
     def _fallback_portfolio_analysis(self, symbols: List[str] = None) -> str:
         """
         Fallback method that manually orchestrates analysis if agent automation fails
         """
         try:
             # Gather data manually
-            portfolio_data = self.call_mcp_tool(self.portfolio_server, "get_portfolio_overview")
-            portfolio_metrics = self.call_mcp_tool(self.portfolio_server, "get_portfolio_metrics")
-            market_overview = self.call_mcp_tool(self.market_data_server, "get_market_overview")
-            
-            if not symbols and portfolio_data.get('status') == 'success':
-                symbols = [pos['symbol'] for pos in portfolio_data.get('positions', [])]
-            
+            portfolio_data = self.call_mcp_tool(
+                self.portfolio_server, "get_portfolio_overview"
+            )
+            portfolio_metrics = self.call_mcp_tool(
+                self.portfolio_server, "get_portfolio_metrics"
+            )
+            market_overview = self.call_mcp_tool(
+                self.market_data_server, "get_market_overview"
+            )
+
+            if not symbols and portfolio_data.get("status") == "success":
+                symbols = [pos["symbol"] for pos in portfolio_data.get("positions", [])]
+
             # Manual analysis prompt with gathered data
             prompt = f"""
             Based on the following portfolio and market data, provide a comprehensive analysis:
@@ -187,12 +200,12 @@ class FinancialAgent:
             
             Provide professional portfolio analysis with specific recommendations.
             """
-            
+
             return self.agent.run(prompt)
-            
+
         except Exception as e:
             return f"Error in portfolio analysis: {str(e)}"
-    
+
     def stock_recommendation(self, symbol: str) -> str:
         """
         Generate AI-powered stock recommendation with intelligent tool usage
@@ -241,13 +254,13 @@ class FinancialAgent:
         
         Use the available tools intelligently to gather the data you need for this analysis.
         """
-        
+
         try:
             return self.agent.run(prompt)
         except Exception as e:
             self.logger.error(f"Error in stock recommendation for {symbol}: {e}")
             return f"Error generating recommendation for {symbol}: {str(e)}"
-    
+
     def portfolio_optimization_advice(self) -> str:
         """
         Provide portfolio optimization recommendations using intelligent analysis
@@ -293,13 +306,13 @@ class FinancialAgent:
         
         Call the appropriate tools to gather the data you need for comprehensive optimization analysis.
         """
-        
+
         try:
             return self.agent.run(prompt)
         except Exception as e:
             self.logger.error(f"Error in optimization advice: {e}")
             return f"Error generating optimization advice: {str(e)}"
-    
+
     def market_outlook_analysis(self) -> str:
         """
         Generate market outlook based on multiple factors using intelligent analysis
@@ -346,16 +359,17 @@ class FinancialAgent:
         
         Use the available tools intelligently to gather market data for comprehensive analysis.
         """
-        
+
         try:
             return self.agent.run(prompt)
         except Exception as e:
             self.logger.error(f"Error in market outlook: {e}")
             return f"Error generating market outlook: {str(e)}"
 
+
 class NewsAnalysisAgent:
     """Specialized agent for news and sentiment analysis"""
-    
+
     def __init__(self, model: str = "claude-3-sonnet-20240229"):
         self.logger = logging.getLogger(__name__)
         try:
@@ -364,20 +378,20 @@ class NewsAnalysisAgent:
             self.logger.warning(f"Could not initialize news agent: {e}")
             # Fallback model
             self.agent = Agent(model="gpt-3.5-turbo")
-    
+
     def analyze_market_news(self, symbols: List[str]) -> Dict[str, Any]:
         """
         Analyze news impact on portfolio symbols
         """
         try:
             news_analysis = {
-                'overall_sentiment': {},
-                'symbol_specific': {},
-                'market_themes': [],
-                'risk_alerts': [],
-                'timestamp': datetime.now().isoformat()
+                "overall_sentiment": {},
+                "symbol_specific": {},
+                "market_themes": [],
+                "risk_alerts": [],
+                "timestamp": datetime.now().isoformat(),
             }
-            
+
             # Overall market sentiment analysis
             overall_prompt = f"""
             You are a financial news analyst. Based on current market conditions and recent developments,
@@ -399,13 +413,13 @@ class NewsAnalysisAgent:
             
             Format as structured analysis with clear reasoning.
             """
-            
+
             overall_analysis = self.agent.run(overall_prompt)
-            news_analysis['overall_sentiment'] = {
-                'analysis': overall_analysis,
-                'timestamp': datetime.now().isoformat()
+            news_analysis["overall_sentiment"] = {
+                "analysis": overall_analysis,
+                "timestamp": datetime.now().isoformat(),
             }
-            
+
             # Symbol-specific analysis
             for symbol in symbols[:5]:  # Limit to 5 symbols to avoid rate limits
                 symbol_prompt = f"""
@@ -427,32 +441,30 @@ class NewsAnalysisAgent:
                 
                 Keep analysis focused and actionable.
                 """
-                
+
                 try:
                     analysis = self.agent.run(symbol_prompt)
-                    news_analysis['symbol_specific'][symbol] = {
-                        'analysis': analysis,
-                        'timestamp': datetime.now().isoformat()
+                    news_analysis["symbol_specific"][symbol] = {
+                        "analysis": analysis,
+                        "timestamp": datetime.now().isoformat(),
                     }
                 except Exception as e:
                     self.logger.error(f"Error analyzing news for {symbol}: {e}")
-                    news_analysis['symbol_specific'][symbol] = {
-                        'error': str(e),
-                        'timestamp': datetime.now().isoformat()
+                    news_analysis["symbol_specific"][symbol] = {
+                        "error": str(e),
+                        "timestamp": datetime.now().isoformat(),
                     }
-            
+
             return news_analysis
-            
+
         except Exception as e:
             self.logger.error(f"Error in news analysis: {e}")
-            return {
-                'error': str(e),
-                'timestamp': datetime.now().isoformat()
-            }
+            return {"error": str(e), "timestamp": datetime.now().isoformat()}
+
 
 class RiskManagementAgent:
     """Specialized agent for risk management"""
-    
+
     def __init__(self, model: str = "gpt-4"):
         self.logger = logging.getLogger(__name__)
         try:
@@ -460,7 +472,7 @@ class RiskManagementAgent:
         except Exception as e:
             self.logger.warning(f"Could not initialize risk agent: {e}")
             self.agent = Agent(model="gpt-3.5-turbo")
-    
+
     def assess_portfolio_risk(self, portfolio_data: Dict) -> Dict[str, Any]:
         """
         Comprehensive portfolio risk assessment
@@ -511,85 +523,94 @@ class RiskManagementAgent:
             
             Provide specific, actionable recommendations with clear priorities.
             """
-            
+
             risk_assessment = self.agent.run(prompt)
-            
+
             return {
-                'status': 'success',
-                'risk_assessment': risk_assessment,
-                'timestamp': datetime.now().isoformat(),
-                'portfolio_analyzed': bool(portfolio_data and portfolio_data.get('status') == 'success')
+                "status": "success",
+                "risk_assessment": risk_assessment,
+                "timestamp": datetime.now().isoformat(),
+                "portfolio_analyzed": bool(
+                    portfolio_data and portfolio_data.get("status") == "success"
+                ),
             }
-            
+
         except Exception as e:
             self.logger.error(f"Error in risk assessment: {e}")
             return {
-                'status': 'error',
-                'error': str(e),
-                'timestamp': datetime.now().isoformat()
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
             }
+
 
 class FinancialAICoordinator:
     """Coordinates all AI agents for comprehensive financial analysis"""
-    
+
     def __init__(self):
         self.financial_agent = FinancialAgent()
         self.news_agent = NewsAnalysisAgent()
         self.risk_agent = RiskManagementAgent()
         self.logger = logging.getLogger(__name__)
-    
+
     def run_full_analysis(self, symbols: List[str] = None) -> Dict[str, Any]:
         """Run comprehensive analysis using all agents"""
         results = {
-            'timestamp': datetime.now().isoformat(),
-            'analysis_type': 'comprehensive',
-            'symbols_analyzed': symbols or []
+            "timestamp": datetime.now().isoformat(),
+            "analysis_type": "comprehensive",
+            "symbols_analyzed": symbols or [],
         }
-        
+
         try:
             # Main portfolio analysis with intelligent tool usage
             self.logger.info("Running comprehensive portfolio analysis...")
-            results['portfolio_analysis'] = self.financial_agent.comprehensive_portfolio_analysis(symbols)
-            
+            results["portfolio_analysis"] = (
+                self.financial_agent.comprehensive_portfolio_analysis(symbols)
+            )
+
             # News and sentiment analysis
             if symbols:
                 self.logger.info("Running news analysis...")
-                results['news_analysis'] = self.news_agent.analyze_market_news(symbols)
-            
+                results["news_analysis"] = self.news_agent.analyze_market_news(symbols)
+
             # Market outlook
             self.logger.info("Running market outlook analysis...")
-            results['market_outlook'] = self.financial_agent.market_outlook_analysis()
-            
+            results["market_outlook"] = self.financial_agent.market_outlook_analysis()
+
             # Risk assessment
             self.logger.info("Running risk assessment...")
             portfolio_data = self.financial_agent.call_mcp_tool(
-                self.financial_agent.portfolio_server, 
-                "get_portfolio_overview"
+                self.financial_agent.portfolio_server, "get_portfolio_overview"
             )
-            results['risk_assessment'] = self.risk_agent.assess_portfolio_risk(portfolio_data)
-            
+            results["risk_assessment"] = self.risk_agent.assess_portfolio_risk(
+                portfolio_data
+            )
+
             # Portfolio optimization
             self.logger.info("Running portfolio optimization...")
-            results['optimization_advice'] = self.financial_agent.portfolio_optimization_advice()
-            
-            results['status'] = 'success'
+            results["optimization_advice"] = (
+                self.financial_agent.portfolio_optimization_advice()
+            )
+
+            results["status"] = "success"
             self.logger.info("Comprehensive analysis completed successfully")
-            
+
         except Exception as e:
             self.logger.error(f"Error in full analysis: {e}")
-            results['status'] = 'error'
-            results['error'] = str(e)
-        
+            results["status"] = "error"
+            results["error"] = str(e)
+
         return results
+
 
 # Utility functions for testing and validation
 def test_mcp_connectivity() -> Dict[str, bool]:
     """Test connectivity to MCP servers"""
     servers = {
         "Portfolio Server": "http://ec2-3-90-112-2.compute-1.amazonaws.com:8002",
-        "Market Data Server": "http://ec2-3-90-112-2.compute-1.amazonaws.com:8001"
+        "Market Data Server": "http://ec2-3-90-112-2.compute-1.amazonaws.com:8001",
     }
-    
+
     connectivity = {}
     for name, url in servers.items():
         try:
@@ -597,80 +618,91 @@ def test_mcp_connectivity() -> Dict[str, bool]:
             connectivity[name] = True
         except:
             connectivity[name] = False
-    
+
     return connectivity
+
 
 def validate_agent_setup() -> Dict[str, Any]:
     """Validate agent setup and configuration"""
     validation = {
-        'timestamp': datetime.now().isoformat(),
-        'mcp_servers': test_mcp_connectivity(),
-        'agent_initialization': {}
+        "timestamp": datetime.now().isoformat(),
+        "mcp_servers": test_mcp_connectivity(),
+        "agent_initialization": {},
     }
-    
+
     try:
         # Test agent initialization
         agent = FinancialAgent()
-        validation['agent_initialization']['FinancialAgent'] = True
-        
+        validation["agent_initialization"]["FinancialAgent"] = True
+
         news_agent = NewsAnalysisAgent()
-        validation['agent_initialization']['NewsAnalysisAgent'] = True
-        
+        validation["agent_initialization"]["NewsAnalysisAgent"] = True
+
         risk_agent = RiskManagementAgent()
-        validation['agent_initialization']['RiskManagementAgent'] = True
-        
+        validation["agent_initialization"]["RiskManagementAgent"] = True
+
         coordinator = FinancialAICoordinator()
-        validation['agent_initialization']['FinancialAICoordinator'] = True
-        
+        validation["agent_initialization"]["FinancialAICoordinator"] = True
+
     except Exception as e:
-        validation['agent_initialization']['error'] = str(e)
-    
+        validation["agent_initialization"]["error"] = str(e)
+
     return validation
+
 
 # Example usage and testing
 if __name__ == "__main__":
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    
+
     print("=== FINANCIAL AI AGENT SYSTEM ===")
     print("Initializing agents and testing connectivity...")
-    
+
     # Validate setup
     validation = validate_agent_setup()
     print(f"System validation: {validation}")
-    
+
     # Initialize the coordinator
     coordinator = FinancialAICoordinator()
-    
+
     # Test with sample portfolio
-    test_symbols = ['AAPL', 'GOOGL', 'MSFT']
+    test_symbols = ["AAPL", "GOOGL", "MSFT"]
     print(f"\nRunning comprehensive analysis for: {test_symbols}")
-    
+
     # Run comprehensive analysis
     results = coordinator.run_full_analysis(test_symbols)
-    
+
     # Display results
     print(f"\n=== ANALYSIS RESULTS ===")
     print(f"Status: {results['status']}")
     print(f"Timestamp: {results['timestamp']}")
-    
-    if results['status'] == 'success':
-        print(f"\n✅ Portfolio Analysis: {'Available' if 'portfolio_analysis' in results else 'Failed'}")
-        print(f"✅ News Analysis: {'Available' if 'news_analysis' in results else 'Failed'}")
-        print(f"✅ Market Outlook: {'Available' if 'market_outlook' in results else 'Failed'}")
-        print(f"✅ Risk Assessment: {'Available' if 'risk_assessment' in results else 'Failed'}")
-        print(f"✅ Optimization Advice: {'Available' if 'optimization_advice' in results else 'Failed'}")
-        
+
+    if results["status"] == "success":
+        print(
+            f"\n✅ Portfolio Analysis: {'Available' if 'portfolio_analysis' in results else 'Failed'}"
+        )
+        print(
+            f"✅ News Analysis: {'Available' if 'news_analysis' in results else 'Failed'}"
+        )
+        print(
+            f"✅ Market Outlook: {'Available' if 'market_outlook' in results else 'Failed'}"
+        )
+        print(
+            f"✅ Risk Assessment: {'Available' if 'risk_assessment' in results else 'Failed'}"
+        )
+        print(
+            f"✅ Optimization Advice: {'Available' if 'optimization_advice' in results else 'Failed'}"
+        )
+
         # Show sample output
-        if 'portfolio_analysis' in results:
+        if "portfolio_analysis" in results:
             print(f"\n=== PORTFOLIO ANALYSIS PREVIEW ===")
-            analysis = results['portfolio_analysis']
+            analysis = results["portfolio_analysis"]
             preview = analysis[:500] + "..." if len(analysis) > 500 else analysis
             print(preview)
-            
+
     else:
         print(f"❌ Analysis failed: {results.get('error', 'Unknown error')}")
-        

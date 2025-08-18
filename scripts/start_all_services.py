@@ -10,9 +10,10 @@ import threading
 import logging
 from typing import List, Tuple
 
+
 class ServiceManager:
     """Manages all MCP services and dashboard"""
-    
+
     def __init__(self):
         self.processes = []
         self.logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ class ServiceManager:
             ("mcp_servers/market_data_server.py", 8001),
             ("mcp_servers/portfolio_server.py", 8002),
         ]
-    
+
     def start_service(self, script_path: str, port: int) -> subprocess.Popen:
         """
         Start an individual MCP server
@@ -28,7 +29,7 @@ class ServiceManager:
         """
         # TODO: Add your service startup logic here
         pass
-    
+
     def start_all_services(self) -> None:
         """
         Start all MCP servers
@@ -36,7 +37,7 @@ class ServiceManager:
         """
         # TODO: Add your service orchestration here
         pass
-    
+
     def start_dashboard(self) -> subprocess.Popen:
         """
         Start the main dashboard
@@ -44,7 +45,7 @@ class ServiceManager:
         """
         # TODO: Add your dashboard startup here
         pass
-    
+
     def health_check(self) -> Dict[str, bool]:
         """
         Check health of all services
@@ -52,7 +53,7 @@ class ServiceManager:
         """
         # TODO: Add your health check logic here
         pass
-    
+
     def shutdown_all(self) -> None:
         """
         Gracefully shutdown all services
@@ -60,6 +61,7 @@ class ServiceManager:
         """
         # TODO: Add your shutdown logic here
         pass
+
 
 def main():
     """
@@ -69,10 +71,11 @@ def main():
     print("🚀 Starting Financial Portfolio Analyzer...")
     print("📊 This will start all MCP servers and the dashboard")
     print("⏳ Please wait while services initialize...")
-    
+
     # TODO: Add your main startup orchestration here
     print("✅ All services started successfully!")
     print("🌐 Dashboard available at: http://localhost:7860")
+
 
 if __name__ == "__main__":
     main()
